@@ -47,6 +47,8 @@ const rows = sqlite
   )
   .all();
 sqlite.close();
+// Xóa bản sao ngay (có dữ liệu cá nhân) — kể cả khi script dừng sớm ở các bước sau.
+fs.rmSync(tmpDir, { recursive: true, force: true });
 console.log(`Đọc được ${rows.length} hợp đồng từ ${dataDir}`);
 
 // Kiểm tra đủ PDF và không trùng ID trước khi ghi bất cứ gì lên Firebase.
@@ -102,4 +104,3 @@ console.log(
   `Đã chuyển ${migrated}, bỏ qua ${skipped} (bản trên Firebase mới hơn). ` +
     `Firestore hiện có ${count} hợp đồng, Storage có ${files.length} file PDF.`
 );
-fs.rmSync(tmpDir, { recursive: true, force: true });
