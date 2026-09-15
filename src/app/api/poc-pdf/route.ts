@@ -1,5 +1,8 @@
 // TẠM THỜI — chỉ để thử nghiệm xuất PDF trên Firebase App Hosting, dùng dữ liệu GIẢ.
 // Xóa route này sau khi thử nghiệm xong.
+import { execFile } from "child_process";
+import fs from "fs";
+import { promisify } from "util";
 import { NextRequest, NextResponse } from "next/server";
 import { renderContractHtml } from "@/lib/contract-template";
 import { htmlToPdf, getPdfDiagnostics } from "@/lib/pdf";
@@ -35,8 +38,44 @@ const company: Company = {
   conDauUrl: "",
 };
 
+function osName(): string | null {
+  try {
+    return fs.readFileSync("/etc/os-release", "utf8").match(/^PRETTY_NAME="?([^"\n]*)/m)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Thư viện mà trình duyệt còn thiếu trên máy chủ (theo `ldd`) — để chẩn đoán khi không khởi động được. */
+async function lddReport(chrome: unknown) {
+  if (process.platform !== "linux" || !chrome || typeof chrome !== "object") return null;
+  const { executablePath, extraEnv } = chrome as {
+    executablePath?: string;
+    extraEnv?: Record<string, string>;
+  };
+  if (!executablePath) return null;
+  try {
+    const { stdout } = await promisify(execFile)("ldd", [executablePath], {
+      env: { ...process.env, ...extraEnv },
+    });
+    return {
+      missing: stdout
+        .split("\n")
+        .filter((line) => line.includes("not found"))
+        .map((line) => line.trim()),
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+async function fullDiagnostics() {
+  const diag = await getPdfDiagnostics();
+  return { ...diag, os: osName(), ldd: await lddReport(diag.chrome) };
+}
+
 // GET /api/poc-pdf         → PDF hợp đồng mẫu
-// GET /api/poc-pdf?diag=1  → JSON chẩn đoán (Chrome nào được dùng, thời gian render)
+// GET /api/poc-pdf?diag=1  → JSON chẩn đoán (trình duyệt nào được dùng, thời gian render)
 export async function GET(req: NextRequest) {
   const wantDiag = req.nextUrl.searchParams.has("diag");
   const started = Date.now();
@@ -54,7 +93,7 @@ export async function GET(req: NextRequest) {
         ok: true,
         renderMs,
         pdfBytes: pdf.length,
-        ...(await getPdfDiagnostics()),
+        ...(await fullDiagnostics()),
       });
     }
     return new NextResponse(new Uint8Array(pdf), {
@@ -70,7 +109,7 @@ export async function GET(req: NextRequest) {
       {
         ok: false,
         error: e instanceof Error ? e.message : String(e),
-        diagnostics: await getPdfDiagnostics(),
+        diagnostics: await fullDiagnostics(),
       },
       { status: 500 }
     );

@@ -33,5 +33,3 @@ env-cho-vps.txt
 .firebase/
 firebase-debug.log*
 
-# Chrome do Puppeteer tải về (xem .puppeteerrc.cjs)
-/.cache/

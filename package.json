@@ -9,7 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@puppeteer/browsers": "2.2.4",
+    "@sparticuz/chromium": "126.0.0",
     "better-sqlite3": "12.11.1",
     "google-auth-library": "9.11.0",
     "googleapis": "140.0.1",

@@ -1,12 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    // puppeteer và better-sqlite3 là native/server-only — không bundle vào client
-    serverComponentsExternalPackages: ["puppeteer", "@puppeteer/browsers", "better-sqlite3"],
-    // Chép Chrome do Puppeteer tải về (.cache/puppeteer, xem .puppeteerrc.cjs)
+    // puppeteer, @sparticuz/chromium và better-sqlite3 là native/server-only — không bundle
+    serverComponentsExternalPackages: ["puppeteer", "@sparticuz/chromium", "better-sqlite3"],
+    // Chromium nén (bin/*.br) được đọc lúc chạy qua đường dẫn động → chép tường minh
     // vào bản build standalone mà Firebase App Hosting dùng để chạy app.
     outputFileTracingIncludes: {
-      "/api/**/*": ["./.cache/puppeteer/**/*"],
+      "/api/**/*": ["./node_modules/@sparticuz/chromium/bin/**/*"],
     },
   },
 };
