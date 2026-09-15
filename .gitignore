@@ -1,0 +1,34 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+*.tsbuildinfo
+
+# debug
+npm-debug.log*
+
+# env files (chứa JSON key) — TUYỆT ĐỐI không commit
+.env
+.env.*
+!.env.example
+
+# Dữ liệu local: config.json (chứa JSON key), database, PDF (có CCCD) — không commit
+/data/
+
+# JSON key service account, phòng khi để nhầm chỗ
+*service-account*.json
+hop-dong-app-*.json
+env-cho-vps.txt
+
+# Firebase
+.firebase/
+firebase-debug.log*

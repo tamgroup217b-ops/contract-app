@@ -1,0 +1,274 @@
+:root {
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --border: #e2e5ea;
+  --text: #1a1d24;
+  --muted: #6b7280;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --error: #dc2626;
+  --error-bg: #fef2f2;
+  --warning: #d97706;
+  --warning-bg: #fffbeb;
+  --success: #16a34a;
+  --success-bg: #f0fdf4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+.app-header {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.app-header .brand {
+  font-weight: 700;
+  font-size: 16px;
+}
+.app-header nav {
+  display: flex;
+  gap: 18px;
+}
+.app-header nav a {
+  color: var(--muted);
+  font-weight: 500;
+}
+.app-header nav a.active {
+  color: var(--text);
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+h2 {
+  font-size: 17px;
+  margin: 0 0 12px;
+}
+.subtitle {
+  color: var(--muted);
+  margin: 0 0 20px;
+}
+
+button,
+.btn {
+  font: inherit;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+button.primary,
+.btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+button.primary:hover {
+  background: var(--primary-hover);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+input[type="text"],
+textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+}
+textarea {
+  min-height: 120px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+}
+.field {
+  margin-bottom: 16px;
+}
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+th,
+td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge.ok {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.badge.warn {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+.badge.err {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.notice {
+  padding: 12px 14px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+.notice.info {
+  background: #eff6ff;
+  color: #1e40af;
+}
+.notice.error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+.notice.success {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.issue-list {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 13px;
+}
+.issue-list li.error {
+  color: var(--error);
+}
+.issue-list li.warning {
+  color: var(--warning);
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Bộ lọc */
+.filter-bar {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.field-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.field-inline label {
+  margin: 0;
+  font-size: 13px;
+}
+.field-inline select,
+.field-inline input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+  min-width: 180px;
+}
+.clear-filter {
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  padding: 8px 4px;
+  cursor: pointer;
+}
+.clear-filter:hover {
+  text-decoration: underline;
+}
+.link-btn {
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+}
+
+/* Panel cài đặt gộp trong trang */
+.settings-panel {
+  margin-top: 16px;
+  border-color: var(--primary);
+}
+
+.app-header {
+  justify-content: flex-start;
+}
