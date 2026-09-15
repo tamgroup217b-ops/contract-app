@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@puppeteer/browsers": "2.2.4",
-    "better-sqlite3": "11.1.2",
+    "better-sqlite3": "12.11.1",
     "google-auth-library": "9.11.0",
     "googleapis": "140.0.1",
     "jszip": "^3.10.1",
@@ -28,6 +28,10 @@
     "typescript": "5.5.3"
   },
   "engines": {
-    "node": "22"
+    "node": "24"
+  },
+  "allowScripts": {
+    "puppeteer@22.13.1": true,
+    "better-sqlite3@12.11.1": true
   }
 }
