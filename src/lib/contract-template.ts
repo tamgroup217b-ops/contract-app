@@ -4,6 +4,7 @@
 // Các trường cá nhân hóa được điền vào; trường thiếu để trống có gạch chân.
 
 import type { Employee, Company } from "./types";
+import { TINOS_FONT_FACE_CSS } from "./fonts.generated";
 
 /** Escape HTML để tránh vỡ layout khi dữ liệu chứa ký tự đặc biệt. */
 function esc(s: string): string {
@@ -38,13 +39,14 @@ export function renderContractHtml({
 <head>
 <meta charset="utf-8" />
 <style>
+${TINOS_FONT_FACE_CSS}
   /* Canh để nội dung trải đều đúng 4 trang, dễ đọc như bản gốc. */
   @page { size: A4; margin: 18mm 20mm; }
   * { box-sizing: border-box; }
   body {
-    /* "Times New Roman" nếu có (Windows); ngược lại DejaVu Serif / Noto Serif
-       — cả hai hỗ trợ đầy đủ tiếng Việt, đảm bảo dấu hiển thị đúng trên server. */
-    font-family: "Times New Roman", "DejaVu Serif", "Noto Serif", Times, serif;
+    /* Tinos nhúng sẵn (cùng kích thước chữ với Times New Roman, đủ dấu tiếng Việt)
+       → PDF giống nhau trên Windows, Linux và Firebase, không phụ thuộc font của máy chủ. */
+    font-family: "Tinos", "Times New Roman", "DejaVu Serif", "Noto Serif", Times, serif;
     font-size: 13pt;
     line-height: 1.5;
     color: #000;

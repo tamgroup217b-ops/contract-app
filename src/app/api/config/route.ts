@@ -8,6 +8,15 @@ export async function GET() {
 
 // POST: lưu cấu hình từ màn hình Cài đặt
 export async function POST(req: NextRequest) {
+  // Bản online cấu hình cố định bằng biến môi trường / Secret Manager —
+  // không cho ai sửa qua giao diện.
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      { error: "Không thể sửa cấu hình trên bản online." },
+      { status: 403 }
+    );
+  }
+
   const body = await req.json();
   const patch: Record<string, unknown> = {};
 
