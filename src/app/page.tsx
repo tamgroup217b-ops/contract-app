@@ -1,6 +1,9 @@
 "use client";
 
+import JSZip from "jszip";
 import { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
+import { EXPORT_BATCH_SIZE, pdfFileName } from "@/lib/export-options";
 
 interface Issue {
   level: "error" | "warning";
@@ -19,21 +22,30 @@ interface Row {
   company: { tenCongTy: string } | null;
   issues: Issue[];
   canExport: boolean;
-  exported?: { id: number } | null; // hợp đồng đã xuất (nếu có) — điền sau khi hợp nhất
+}
+interface BatchResult {
+  stt: string;
+  fileName?: string;
+  pdfBase64?: string;
+  name?: string;
+  error?: string;
 }
 
-interface ClientConfig {
-  spreadsheetId: string;
-  employeeSheetName: string;
-  companySheetName: string;
-  hasServiceAccount: boolean;
-  isConfigured: boolean;
-  envManaged: boolean;
+/** Tải file về máy (thư mục Downloads). */
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export default function HomePage() {
   const [rows, setRows] = useState<Row[]>([]);
-  const [exportedMap, setExportedMap] = useState<Record<string, number>>({}); // soHopDong -> contractId
+  const [exportedMap, setExportedMap] = useState<Record<string, string>>({}); // soHopDong -> contractId
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exportingId, setExportingId] = useState<string | null>(null);
@@ -43,28 +55,22 @@ export default function HomePage() {
   const [filterCoSo, setFilterCoSo] = useState("");
   const [keyword, setKeyword] = useState(""); // tìm theo tên hoặc SĐT
 
-  // Panel cài đặt
-  const [showSettings, setShowSettings] = useState(false);
-  // Nút Cài đặt chỉ hiện khi app KHÔNG bị khóa cấu hình bằng biến môi trường.
-  // Trên VPS (có env) → ẩn nút; local → hiện để nhập cấu hình.
-  const [showSettingsButton, setShowSettingsButton] = useState(false);
-
-  // Xuất tất cả
-  const [exportingAll, setExportingAll] = useState(false);
+  // Xuất tất cả: tiến độ theo lô (null = không chạy)
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
 
   async function sync() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/employees");
+      const res = await apiFetch("/api/employees");
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Không tải được dữ liệu.");
+        if (res.status !== 401) setError(data.error || "Không tải được dữ liệu.");
         setRows([]);
       } else {
         setRows(data.rows || []);
         // Lập map các hợp đồng đã xuất để hiện nút "Tải PDF"
-        const map: Record<string, number> = {};
+        const map: Record<string, string> = {};
         for (const c of data.exported || []) map[c.soHopDong] = c.id;
         setExportedMap(map);
       }
@@ -76,33 +82,18 @@ export default function HomePage() {
 
   useEffect(() => {
     sync();
-    // Hỏi server: cấu hình có bị khóa bằng biến môi trường không?
-    // Nếu KHÔNG bị khóa (local) → hiện nút Cài đặt.
-    fetch("/api/config")
-      .then((r) => r.json())
-      .then((cfg) => setShowSettingsButton(!cfg.envManaged))
-      .catch(() => setShowSettingsButton(false));
   }, []);
 
   async function exportPdf(row: Row, confirmOverwrite = false) {
     setExportingId(row.employee.stt);
     try {
-      const res = await fetch("/api/contracts/export", {
+      const res = await apiFetch("/api/contracts/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stt: row.employee.stt, confirmOverwrite }),
       });
       if (res.ok) {
-        const blob = await res.blob();
-        // Tải file PDF về máy (thư mục Downloads)
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${row.employee.soHopDong || "hop-dong-" + row.employee.stt}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
+        downloadBlob(await res.blob(), pdfFileName(row.employee.soHopDong, `hop-dong-${row.employee.stt}`));
         await sync();
       } else if (res.status === 409) {
         const data = await res.json();
@@ -111,8 +102,8 @@ export default function HomePage() {
           await exportPdf(row, true);
           return;
         }
-      } else {
-        const err = await res.json();
+      } else if (res.status !== 401) {
+        const err = await res.json().catch(() => ({}));
         alert(err.error || "Xuất PDF thất bại.");
       }
     } catch {
@@ -155,17 +146,17 @@ export default function HomePage() {
   const okCount = filtered.filter((r) => r.canExport).length;
   const errCount = filtered.length - okCount;
   const hasFilter = filterCompany || filterCoSo || keyword;
+  const exportingAll = batchProgress !== null;
 
-  // Xuất tất cả các dòng ĐỦ ĐIỀU KIỆN trong danh sách đã lọc → 1 file ZIP
+  // Xuất tất cả các dòng ĐỦ ĐIỀU KIỆN trong danh sách đã lọc → 1 file ZIP.
+  // Gửi theo lô EXPORT_BATCH_SIZE người/request để mỗi request ngắn và hiện được tiến độ.
   async function exportAll() {
     const exportable = filtered.filter((r) => r.canExport);
     if (exportable.length === 0) {
       alert("Không có nhân viên nào đủ điều kiện xuất trong danh sách hiện tại.");
       return;
     }
-    const overwriteCount = exportable.filter(
-      (r) => exportedMap[r.employee.soHopDong]
-    ).length;
+    const overwriteCount = exportable.filter((r) => exportedMap[r.employee.soHopDong]).length;
     let confirmMsg = `Xuất hợp đồng cho ${exportable.length} nhân viên (bỏ qua ${errCount} dòng lỗi).`;
     if (overwriteCount > 0) {
       confirmMsg += `\n\nTrong đó ${overwriteCount} hợp đồng đã tồn tại — bản cũ sẽ bị thay thế.`;
@@ -173,39 +164,64 @@ export default function HomePage() {
     confirmMsg += "\n\nTiếp tục?";
     if (!window.confirm(confirmMsg)) return;
 
-    setExportingAll(true);
-    try {
-      const res = await fetch("/api/contracts/export-batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stts: exportable.map((r) => r.employee.stt) }),
-      });
-      if (res.ok) {
-        const success = res.headers.get("X-Export-Success");
-        const failed = res.headers.get("X-Export-Failed");
-        const blob = await res.blob();
-        // Tải file ZIP về máy
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `hop-dong-${new Date().toISOString().slice(0, 10)}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        await sync();
-        alert(
-          `Đã xuất ${success} hợp đồng vào file ZIP.` +
-            (Number(failed) > 0 ? ` (${failed} lỗi bị bỏ qua)` : "")
-        );
-      } else {
-        const err = await res.json();
-        alert(err.error || "Xuất tất cả thất bại.");
+    const zip = new JSZip();
+    const usedNames = new Map<string, number>(); // tránh trùng tên file trong zip
+    const failed: string[] = [];
+    let success = 0;
+    let sessionExpired = false;
+    setBatchProgress({ done: 0, total: exportable.length });
+
+    for (let start = 0; start < exportable.length; start += EXPORT_BATCH_SIZE) {
+      const chunk = exportable.slice(start, start + EXPORT_BATCH_SIZE);
+      const chunkNames = chunk.map((r) => r.employee.hoTen || r.employee.stt);
+      try {
+        const res = await apiFetch("/api/contracts/export-batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stts: chunk.map((r) => r.employee.stt) }),
+        });
+        if (res.status === 401) {
+          sessionExpired = true;
+          break;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          failed.push(...chunkNames.map((n) => `${n}: ${data.error || "lỗi máy chủ"}`));
+        } else {
+          for (const item of (data.results || []) as BatchResult[]) {
+            if (item.pdfBase64 && item.fileName) {
+              const base = item.fileName.replace(/\.pdf$/i, "");
+              const count = usedNames.get(base) ?? 0;
+              usedNames.set(base, count + 1);
+              zip.file(count > 0 ? `${base}-${count + 1}.pdf` : `${base}.pdf`, item.pdfBase64, {
+                base64: true,
+              });
+              success++;
+            } else {
+              failed.push(`${item.name || item.stt}: ${item.error || "lỗi"}`);
+            }
+          }
+        }
+      } catch {
+        failed.push(...chunkNames.map((n) => `${n}: lỗi kết nối`));
       }
-    } catch {
-      alert("Lỗi khi xuất tất cả.");
+      setBatchProgress({ done: Math.min(start + chunk.length, exportable.length), total: exportable.length });
     }
-    setExportingAll(false);
+
+    if (success > 0) {
+      const blob = await zip.generateAsync({ type: "blob" });
+      downloadBlob(blob, `hop-dong-${new Date().toISOString().slice(0, 10)}.zip`);
+    }
+    setBatchProgress(null);
+    if (sessionExpired) return; // AppShell đã hiện lại màn hình đăng nhập
+
+    await sync();
+    let msg = `Đã xuất ${success}/${exportable.length} hợp đồng${success > 0 ? " vào file ZIP" : ""}.`;
+    if (failed.length > 0) {
+      msg += `\n\nKhông xuất được ${failed.length}:\n${failed.slice(0, 10).join("\n")}`;
+      if (failed.length > 10) msg += `\n… và ${failed.length - 10} dòng khác`;
+    }
+    alert(msg);
   }
 
   return (
@@ -223,11 +239,6 @@ export default function HomePage() {
           <h1>Danh sách nhân viên</h1>
         </div>
         <div className="row-actions">
-          {showSettingsButton && (
-            <button onClick={() => setShowSettings((v) => !v)}>
-              ⚙️ Cài đặt
-            </button>
-          )}
           <button
             onClick={exportAll}
             disabled={exportingAll || loading || okCount === 0}
@@ -237,24 +248,19 @@ export default function HomePage() {
                 : `Xuất ${okCount} hợp đồng đủ điều kiện${hasFilter ? " (theo bộ lọc)" : ""}`
             }
           >
-            {exportingAll ? "Đang xuất..." : `📦 Xuất tất cả (${okCount})`}
+            {batchProgress
+              ? `Đang xuất ${batchProgress.done}/${batchProgress.total}...`
+              : `📦 Xuất tất cả (${okCount})`}
           </button>
-          <button className="primary" onClick={sync} disabled={loading}>
+          <button className="primary" onClick={sync} disabled={loading || exportingAll}>
             {loading ? "Đang đồng bộ..." : "↻ Đồng bộ lại"}
           </button>
         </div>
       </div>
 
-      {showSettings && <SettingsPanel onSaved={sync} />}
-
       {error && (
         <div className="notice error" style={{ marginTop: 16 }}>
-          {error}{" "}
-          {error.includes("Cài đặt") && (
-            <button className="link-btn" onClick={() => setShowSettings(true)}>
-              → Mở Cài đặt
-            </button>
-          )}
+          {error}
         </div>
       )}
 
@@ -263,10 +269,7 @@ export default function HomePage() {
         <div className="card filter-bar">
           <div className="field-inline">
             <label>Theo công ty</label>
-            <select
-              value={filterCompany}
-              onChange={(e) => setFilterCompany(e.target.value)}
-            >
+            <select value={filterCompany} onChange={(e) => setFilterCompany(e.target.value)}>
               <option value="">Tất cả công ty</option>
               {companyOptions.map((c) => (
                 <option key={c} value={c}>
@@ -313,8 +316,8 @@ export default function HomePage() {
       {!error && !loading && rows.length > 0 && (
         <div className="notice info">
           {hasFilter ? "Kết quả lọc: " : "Tổng "}
-          <strong>{filtered.length}</strong> dòng — <strong>{okCount}</strong> đủ điều
-          kiện xuất, <strong>{errCount}</strong> cần kiểm tra lại.
+          <strong>{filtered.length}</strong> dòng — <strong>{okCount}</strong> đủ điều kiện xuất,{" "}
+          <strong>{errCount}</strong> cần kiểm tra lại.
         </div>
       )}
 
@@ -346,11 +349,7 @@ export default function HomePage() {
                     <td>{r.employee.soHopDong || "—"}</td>
                     <td>{r.employee.hoTen || "—"}</td>
                     <td>{r.employee.soDienThoai || "—"}</td>
-                    <td>
-                      {r.company?.tenCongTy || (
-                        <span className="badge err">Không khớp</span>
-                      )}
-                    </td>
+                    <td>{r.company?.tenCongTy || <span className="badge err">Không khớp</span>}</td>
                     <td>{r.employee.coSoLamViec || "—"}</td>
                     <td>
                       {r.canExport ? (
@@ -373,18 +372,31 @@ export default function HomePage() {
                       )}
                     </td>
                     <td>
-                      <button
-                        className="primary"
-                        disabled={!r.canExport || exportingId === r.employee.stt}
-                        onClick={() => exportPdf(r)}
-                        title={
-                          contractId
-                            ? "Tạo lại PDF từ dữ liệu Sheet mới nhất (ghi đè bản cũ)"
-                            : "Tạo PDF từ dữ liệu Sheet"
-                        }
-                      >
-                        {exportingId === r.employee.stt ? "Đang xuất..." : "Xuất PDF"}
-                      </button>
+                      <div className="row-actions">
+                        <button
+                          className="primary"
+                          disabled={!r.canExport || exportingId === r.employee.stt || exportingAll}
+                          onClick={() => exportPdf(r)}
+                          title={
+                            contractId
+                              ? "Tạo lại PDF từ dữ liệu Sheet mới nhất (ghi đè bản cũ)"
+                              : "Tạo PDF từ dữ liệu Sheet"
+                          }
+                        >
+                          {exportingId === r.employee.stt ? "Đang xuất..." : "Xuất PDF"}
+                        </button>
+                        {contractId && (
+                          <a
+                            className="btn"
+                            href={`/api/contracts/${contractId}/pdf`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Mở bản PDF đã lưu"
+                          >
+                            Tải PDF
+                          </a>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -400,115 +412,6 @@ export default function HomePage() {
           </table>
         </div>
       )}
-    </div>
-  );
-}
-
-/* ---------- Panel Cài đặt (gộp vào trang, mở/đóng) ---------- */
-
-function SettingsPanel({ onSaved }: { onSaved: () => void }) {
-  const [cfg, setCfg] = useState<ClientConfig | null>(null);
-  const [spreadsheetId, setSpreadsheetId] = useState("");
-  const [employeeSheetName, setEmployeeSheetName] = useState("Nhân viên");
-  const [companySheetName, setCompanySheetName] = useState("Công ty");
-  const [serviceAccountJson, setServiceAccountJson] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<{ type: string; text: string } | null>(null);
-
-  async function load() {
-    const res = await fetch("/api/config");
-    const data: ClientConfig = await res.json();
-    setCfg(data);
-    setSpreadsheetId(data.spreadsheetId);
-    setEmployeeSheetName(data.employeeSheetName);
-    setCompanySheetName(data.companySheetName);
-  }
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function save() {
-    setSaving(true);
-    setMsg(null);
-    const res = await fetch("/api/config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        spreadsheetId,
-        employeeSheetName,
-        companySheetName,
-        serviceAccountJson,
-      }),
-    });
-    if (res.ok) {
-      setServiceAccountJson("");
-      setMsg({ type: "success", text: "Đã lưu cấu hình." });
-      await load();
-      onSaved();
-    } else {
-      const err = await res.json();
-      setMsg({ type: "error", text: err.error || "Lưu thất bại." });
-    }
-    setSaving(false);
-  }
-
-  return (
-    <div className="card settings-panel">
-      <h2>Cài đặt kết nối Google Sheet</h2>
-      {cfg && (
-        <div className={`notice ${cfg.isConfigured ? "success" : "info"}`}>
-          {cfg.isConfigured
-            ? "✅ Đã cấu hình kết nối Google Sheet."
-            : "⚠️ Chưa cấu hình đủ — cần Spreadsheet ID và Service Account JSON."}
-        </div>
-      )}
-      {msg && <div className={`notice ${msg.type}`}>{msg.text}</div>}
-
-      <div className="field">
-        <label>Spreadsheet ID</label>
-        <input
-          type="text"
-          value={spreadsheetId}
-          onChange={(e) => setSpreadsheetId(e.target.value)}
-          placeholder="Chuỗi ID trong link Google Sheet (giữa /d/ và /edit)"
-        />
-      </div>
-
-      <div className="field">
-        <label>Service Account JSON key</label>
-        <textarea
-          value={serviceAccountJson}
-          onChange={(e) => setServiceAccountJson(e.target.value)}
-          placeholder={
-            cfg?.hasServiceAccount
-              ? "•••• Đã có key. Để trống nếu không đổi."
-              : 'Dán toàn bộ nội dung file .json'
-          }
-        />
-      </div>
-
-      <div style={{ display: "flex", gap: 16 }}>
-        <div className="field" style={{ flex: 1 }}>
-          <label>Tên tab Nhân viên</label>
-          <input
-            type="text"
-            value={employeeSheetName}
-            onChange={(e) => setEmployeeSheetName(e.target.value)}
-          />
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label>Tên tab Công ty</label>
-          <input
-            type="text"
-            value={companySheetName}
-            onChange={(e) => setCompanySheetName(e.target.value)}
-          />
-        </div>
-      </div>
-
-      <button className="primary" onClick={save} disabled={saving}>
-        {saving ? "Đang lưu..." : "Lưu cấu hình"}
-      </button>
     </div>
   );
 }

@@ -48,23 +48,21 @@ export interface ContractRow {
   canExport: boolean; // true nếu không có issue level "error"
 }
 
-/** Cấu hình app, nhập qua màn hình Cài đặt, lưu phía server */
+/** Cấu hình app, đọc từ biến môi trường phía server */
 export interface AppConfig {
   spreadsheetId: string; // ID Google Sheet
-  serviceAccountJson: string; // nội dung file JSON key (chuỗi thô)
-  allowedEmails: string[]; // whitelist email được phép đăng nhập
   employeeSheetName: string; // tên tab nhân viên (mặc định "Nhân viên")
   companySheetName: string; // tên tab công ty (mặc định "Công ty")
 }
 
-/** Metadata một hợp đồng đã xuất, lưu trong DB */
+/** Thông tin một hợp đồng đã xuất, lưu trong Firestore */
 export interface StoredContract {
-  id: number;
+  id: string; // băm từ số hợp đồng (xem contractIdFor trong db.ts)
   soHopDong: string;
   hoTen: string;
   soDienThoai: string;
   tenCongTy: string;
-  pdfPath: string; // đường dẫn file PDF trên server
+  storagePath: string; // đường dẫn file PDF trên Cloud Storage
   createdAt: string;
   updatedAt: string;
 }

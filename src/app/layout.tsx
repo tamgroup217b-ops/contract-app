@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
+import AppShell from "@/components/AppShell";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -6,18 +8,11 @@ export const metadata: Metadata = {
   description: "Xuất và tra cứu hợp đồng, hồ sơ từ Google Sheet",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="vi">
       <body>
-        <header className="app-header">
-          <span className="brand">📄 Hợp đồng - Hồ sơ</span>
-        </header>
-        <main>{children}</main>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

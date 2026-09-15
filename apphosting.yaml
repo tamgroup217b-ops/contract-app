@@ -7,3 +7,47 @@ runConfig:
   minInstances: 0
   maxInstances: 2
   concurrency: 4
+
+env:
+  # Google Sheet nguồn. App đọc bằng tài khoản dịch vụ của backend
+  # (firebase-app-hosting-compute@hop-dong-app-33aec.iam.gserviceaccount.com) — không cần key.
+  - variable: SPREADSHEET_ID
+    value: 1ikikTJHfJN0_4Ig1MEK72gZJA4P1cZEYAwluJmYZZzE
+    availability:
+      - RUNTIME
+  - variable: EMPLOYEE_SHEET_NAME
+    value: Nhân viên
+    availability:
+      - RUNTIME
+  - variable: COMPANY_SHEET_NAME
+    value: Công ty
+    availability:
+      - RUNTIME
+
+  # Cấu hình web Firebase (định danh công khai, không phải bí mật).
+  # NEXT_PUBLIC_* được nhúng vào mã trình duyệt lúc build nên cần có ở cả BUILD.
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyD4DkuGRHVc9RPKIqZKFTCeUYlRofICx14
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: hop-dong-app-33aec.firebaseapp.com
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: hop-dong-app-33aec
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: 1:1089713628354:web:4f45a4a21c2d2c4c6a875b
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: hop-dong-app-33aec.firebasestorage.app
+    availability:
+      - BUILD
+      - RUNTIME

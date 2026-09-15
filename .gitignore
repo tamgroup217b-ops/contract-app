@@ -33,3 +33,4 @@ env-cho-vps.txt
 .firebase/
 firebase-debug.log*
 
+*-debug.log

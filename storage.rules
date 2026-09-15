@@ -1,0 +1,10 @@
+rules_version = '2';
+
+// App chỉ đọc/ghi Storage từ server (Admin SDK) — chặn toàn bộ truy cập trực tiếp từ trình duyệt.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

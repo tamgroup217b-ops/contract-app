@@ -1,46 +1,37 @@
-// Kết nối Google qua Service Account (Kiểu A đã chốt).
-// Dùng JSON key lưu trong config để đọc Sheets và tải ảnh từ Drive.
-// Toàn bộ module này chỉ chạy phía server.
+// Đọc Google Sheets và tải ảnh chữ ký từ Google Drive. Toàn bộ module này chỉ chạy phía server.
+//
+// Xác thực:
+// - Có SERVICE_ACCOUNT_JSON (máy local): dùng JSON key đó.
+// - Không có (Firebase App Hosting): Application Default Credentials — tài khoản dịch vụ của backend
+//   (firebase-app-hosting-compute@…), đã được chia sẻ quyền xem Sheet.
 
 import { google } from "googleapis";
 import { GoogleAuth } from "google-auth-library";
 import { getConfig } from "./config";
-import type { Employee, Company } from "./types";
+import { buildContractRows } from "./validation";
+import type { Employee, Company, ContractRow } from "./types";
 
 const SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets.readonly",
   "https://www.googleapis.com/auth/drive.readonly",
 ];
 
-/** Tạo GoogleAuth từ JSON key trong config. Ném lỗi rõ ràng nếu chưa cấu hình. */
-function getAuth(): GoogleAuth {
-  const { serviceAccountJson } = getConfig();
-  if (!serviceAccountJson) {
-    throw new Error("Chưa cấu hình Service Account JSON trong phần Cài đặt.");
-  }
-  let credentials;
-  try {
-    credentials = JSON.parse(serviceAccountJson);
-  } catch {
-    throw new Error("Service Account JSON không hợp lệ (không phải JSON đúng định dạng).");
-  }
-  return new GoogleAuth({ credentials, scopes: SCOPES });
-}
+let _auth: GoogleAuth | null = null;
 
-/** Đọc toàn bộ giá trị của một tab. Trả về mảng 2 chiều (hàng × cột). */
-async function readSheetValues(tabName: string): Promise<string[][]> {
-  const { spreadsheetId } = getConfig();
-  if (!spreadsheetId) {
-    throw new Error("Chưa cấu hình Spreadsheet ID trong phần Cài đặt.");
+/** GoogleAuth dùng chung (giữ token giữa các request). */
+function getAuth(): GoogleAuth {
+  if (_auth) return _auth;
+  const json = process.env.SERVICE_ACCOUNT_JSON;
+  let credentials;
+  if (json) {
+    try {
+      credentials = JSON.parse(json);
+    } catch {
+      throw new Error("SERVICE_ACCOUNT_JSON không phải JSON hợp lệ.");
+    }
   }
-  const auth = getAuth();
-  const sheets = google.sheets({ version: "v4", auth });
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: `'${tabName}'`,
-    valueRenderOption: "FORMATTED_VALUE",
-  });
-  return (res.data.values as string[][]) ?? [];
+  _auth = new GoogleAuth({ credentials, scopes: SCOPES });
+  return _auth;
 }
 
 /** Lấy giá trị ô theo chỉ số cột, an toàn khi thiếu cột. */
@@ -49,14 +40,12 @@ function cell(row: string[], idx: number): string {
 }
 
 /**
- * Đọc tab Nhân viên. Cấu trúc cột (theo demo hiện tại):
+ * Tab Nhân viên. Cấu trúc cột (theo demo hiện tại):
  * 0:STT 1:Số hợp đồng 2:Họ và tên 3:SĐT 4:Ngày sinh 5:CCCD 6:Ngày cấp
  * 7:Nơi cấp 8:Địa chỉ thường trú 9:Địa chỉ hiện tại 10:Cơ sở làm việc
  * 11:Nơi kí HD 12:Công ty 13:Ngày thử việc 14:Chữ ký
  */
-export async function readEmployees(): Promise<Employee[]> {
-  const { employeeSheetName } = getConfig();
-  const rows = await readSheetValues(employeeSheetName);
+function parseEmployees(rows: string[][]): Employee[] {
   if (rows.length < 2) return [];
   // Bỏ hàng tiêu đề
   return rows
@@ -82,13 +71,11 @@ export async function readEmployees(): Promise<Employee[]> {
 }
 
 /**
- * Đọc tab Công ty. Cấu trúc cột:
+ * Tab Công ty. Cấu trúc cột:
  * 0:Tên công ty 1:Mã số thuế 2:Người đại diện 3:Chức vụ 4:SĐT
  * 5:Địa chỉ trụ sở chính 6:(link chữ ký/dấu)
  */
-export async function readCompanies(): Promise<Company[]> {
-  const { companySheetName } = getConfig();
-  const rows = await readSheetValues(companySheetName);
+function parseCompanies(rows: string[][]): Company[] {
   if (rows.length < 2) return [];
   return rows
     .slice(1)
@@ -102,6 +89,43 @@ export async function readCompanies(): Promise<Company[]> {
       diaChiTruSo: cell(r, 5),
       conDauUrl: cell(r, 6),
     }));
+}
+
+/** Đọc cả 2 tab trong 1 request (tiết kiệm hạn mức Sheets API: 60 lượt đọc/phút mỗi tài khoản). */
+export async function readSheetData(): Promise<{ employees: Employee[]; companies: Company[] }> {
+  const { spreadsheetId, employeeSheetName, companySheetName } = getConfig();
+  if (!spreadsheetId) {
+    throw new Error("Chưa cấu hình Google Sheet (SPREADSHEET_ID).");
+  }
+  const sheets = google.sheets({ version: "v4", auth: getAuth() });
+  const res = await sheets.spreadsheets.values.batchGet({
+    spreadsheetId,
+    ranges: [`'${employeeSheetName}'`, `'${companySheetName}'`],
+    valueRenderOption: "FORMATTED_VALUE",
+  });
+  const [employeeRows, companyRows] = (res.data.valueRanges ?? []).map(
+    (range) => (range.values as string[][] | null | undefined) ?? []
+  );
+  return {
+    employees: parseEmployees(employeeRows ?? []),
+    companies: parseCompanies(companyRows ?? []),
+  };
+}
+
+/** Kiểm tra quyền đọc Sheet mà không lấy dữ liệu (chỉ lấy ID) — dùng cho /api/health. */
+export async function checkSheetAccess(): Promise<void> {
+  const { spreadsheetId } = getConfig();
+  if (!spreadsheetId) {
+    throw new Error("Chưa cấu hình Google Sheet (SPREADSHEET_ID).");
+  }
+  const sheets = google.sheets({ version: "v4", auth: getAuth() });
+  await sheets.spreadsheets.get({ spreadsheetId, fields: "spreadsheetId" });
+}
+
+/** Đọc Sheet, ghép nhân viên với công ty và validate — dữ liệu cho danh sách và cho việc xuất. */
+export async function loadContractRows(): Promise<ContractRow[]> {
+  const { employees, companies } = await readSheetData();
+  return buildContractRows(employees, companies);
 }
 
 /** Trích fileId từ nhiều dạng link Google Drive khác nhau. */
@@ -128,8 +152,7 @@ export async function fetchDriveImageAsDataUri(url: string): Promise<string | nu
   const fileId = extractDriveFileId(url);
   if (!fileId) return null;
   try {
-    const auth = getAuth();
-    const drive = google.drive({ version: "v3", auth });
+    const drive = google.drive({ version: "v3", auth: getAuth() });
     const res = await drive.files.get(
       { fileId, alt: "media" },
       { responseType: "arraybuffer" }

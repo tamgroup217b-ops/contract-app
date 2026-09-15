@@ -263,12 +263,47 @@ th {
   text-decoration: underline;
 }
 
-/* Panel cài đặt gộp trong trang */
-.settings-panel {
-  margin-top: 16px;
+.app-header {
+  justify-content: flex-start;
+}
+.app-header .user-box {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* Link hiển thị như nút (vd. "Tải PDF") */
+a.btn {
+  display: inline-block;
+  white-space: nowrap;
+}
+a.btn:hover {
+  text-decoration: none;
   border-color: var(--primary);
 }
 
-.app-header {
-  justify-content: flex-start;
+/* Màn hình đăng nhập */
+.login-card {
+  max-width: 420px;
+  margin: 48px auto;
+  text-align: center;
+}
+.login-card p {
+  color: var(--muted);
+  margin: 8px 0 20px;
+}
+
+@media (max-width: 720px) {
+  .app-header {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    gap: 8px 18px;
+  }
+  .app-header .user-box {
+    margin-left: 0;
+  }
 }
