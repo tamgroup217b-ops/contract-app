@@ -1,6 +1,7 @@
 "use client";
 
-// Tra cứu hợp đồng đã xuất theo số điện thoại.
+// Tra cứu theo số điện thoại: xem những hợp đồng đã xuất cho người đó và thời điểm xuất.
+// App không lưu file PDF — cần bản mới thì xuất lại ở trang Danh sách nhân viên.
 
 import { useState, type FormEvent } from "react";
 import { apiFetch } from "@/lib/api-client";
@@ -45,7 +46,10 @@ export default function LookupPage() {
   return (
     <div className="container">
       <h1>Tra cứu hợp đồng</h1>
-      <p className="subtitle">Tìm các hợp đồng đã xuất theo số điện thoại của người lao động.</p>
+      <p className="subtitle">
+        Xem các hợp đồng đã xuất theo số điện thoại của người lao động. Cần file PDF thì vào trang
+        Danh sách nhân viên và bấm Xuất PDF.
+      </p>
 
       <form className="card filter-bar" onSubmit={search}>
         <div className="field-inline" style={{ flex: 1, minWidth: 200 }}>
@@ -80,8 +84,8 @@ export default function LookupPage() {
                 <th>Họ và tên</th>
                 <th>Số điện thoại</th>
                 <th>Công ty (Bên A)</th>
-                <th>Cập nhật lần cuối</th>
-                <th></th>
+                <th>Xuất lần đầu</th>
+                <th>Xuất gần nhất</th>
               </tr>
             </thead>
             <tbody>
@@ -91,17 +95,8 @@ export default function LookupPage() {
                   <td>{c.hoTen}</td>
                   <td>{c.soDienThoai}</td>
                   <td>{c.tenCongTy}</td>
+                  <td>{formatTime(c.createdAt)}</td>
                   <td>{formatTime(c.updatedAt)}</td>
-                  <td>
-                    <a
-                      className="btn"
-                      href={`/api/contracts/${c.id}/pdf`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Tải PDF
-                    </a>
-                  </td>
                 </tr>
               ))}
             </tbody>

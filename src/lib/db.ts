@@ -1,6 +1,8 @@
 // Lưu thông tin hợp đồng đã xuất trong Firestore (collection "contracts").
+// Chỉ lưu thông tin, không lưu file PDF — cần bản nào thì xuất lại từ Google Sheet.
+//
 // ID tài liệu = băm SHA-256 của số hợp đồng: số hợp đồng có dấu "/" (vd. HDTV03/2026) mà Firestore
-// không cho phép trong ID, và băm tránh việc 2 số khác nhau (HDTV02/2026, HDTV02_2026) dùng chung file.
+// không cho phép trong ID, và băm tránh việc 2 số khác nhau (HDTV02/2026, HDTV02_2026) trùng nhau.
 
 import crypto from "crypto";
 import type { DocumentData } from "firebase-admin/firestore";
@@ -11,7 +13,7 @@ const ID_PATTERN = /^[0-9a-f]{32}$/;
 
 const contracts = () => firestore().collection("contracts");
 
-/** ID hợp đồng theo số hợp đồng. Phải khớp scripts/migrate-sqlite-to-firebase.mjs. */
+/** ID hợp đồng theo số hợp đồng. */
 export function contractIdFor(soHopDong: string): string {
   return crypto.createHash("sha256").update(soHopDong.trim()).digest("hex").slice(0, 32);
 }
@@ -28,22 +30,20 @@ function toContract(id: string, data: DocumentData): StoredContract {
     hoTen: String(data.hoTen ?? ""),
     soDienThoai: String(data.soDienThoai ?? ""),
     tenCongTy: String(data.tenCongTy ?? ""),
-    storagePath: String(data.storagePath ?? ""),
     createdAt: String(data.createdAt ?? ""),
     updatedAt: String(data.updatedAt ?? ""),
   };
 }
 
 /**
- * Lưu (hoặc ghi đè) hợp đồng theo số hợp đồng.
- * Đã chốt: xuất lại thì GHI ĐÈ bản cũ — giữ thời điểm tạo lần đầu, cập nhật thời điểm sửa.
+ * Ghi nhận một hợp đồng vừa xuất (theo số hợp đồng).
+ * Xuất lại thì ghi đè bản ghi cũ — giữ thời điểm xuất lần đầu, cập nhật thời điểm xuất gần nhất.
  */
 export async function upsertContract(input: {
   soHopDong: string;
   hoTen: string;
   soDienThoai: string;
   tenCongTy: string;
-  storagePath: string;
 }): Promise<{ contract: StoredContract; overwritten: boolean }> {
   const id = contractIdFor(input.soHopDong);
   const ref = contracts().doc(id);
@@ -55,7 +55,6 @@ export async function upsertContract(input: {
       hoTen: input.hoTen,
       soDienThoai: normalizePhone(input.soDienThoai),
       tenCongTy: input.tenCongTy,
-      storagePath: input.storagePath,
       createdAt: snap.exists ? String(snap.get("createdAt")) : now,
       updatedAt: now,
     };
@@ -64,7 +63,7 @@ export async function upsertContract(input: {
   });
 }
 
-/** Tìm hợp đồng đã lưu theo số hợp đồng (để biết có ghi đè hay không). */
+/** Tìm hợp đồng đã xuất theo số hợp đồng (để hỏi xác nhận trước khi ghi đè). */
 export async function findBySoHopDong(soHopDong: string): Promise<StoredContract | undefined> {
   const snap = await contracts().doc(contractIdFor(soHopDong)).get();
   return snap.exists ? toContract(snap.id, snap.data() ?? {}) : undefined;
@@ -85,8 +84,8 @@ export async function searchByPhone(phone: string): Promise<StoredContract[]> {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-/** Số hợp đồng của các hợp đồng đã xuất (để hiện nút "Tải PDF" trên danh sách). */
-export async function listExported(): Promise<Array<{ id: string; soHopDong: string }>> {
+/** Số hợp đồng của các hợp đồng đã xuất (để đánh dấu dòng nào xuất lại sẽ ghi đè). */
+export async function listExportedSoHopDong(): Promise<string[]> {
   const snap = await contracts().select("soHopDong").get();
-  return snap.docs.map((d) => ({ id: d.id, soHopDong: String(d.get("soHopDong") ?? "") }));
+  return snap.docs.map((d) => String(d.get("soHopDong") ?? "")).filter(Boolean);
 }

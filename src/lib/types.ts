@@ -55,14 +55,16 @@ export interface AppConfig {
   companySheetName: string; // tên tab công ty (mặc định "Công ty")
 }
 
-/** Thông tin một hợp đồng đã xuất, lưu trong Firestore */
+/**
+ * Thông tin một hợp đồng đã xuất, lưu trong Firestore.
+ * App không lưu file PDF — mỗi lần cần là xuất lại từ Google Sheet.
+ */
 export interface StoredContract {
   id: string; // băm từ số hợp đồng (xem contractIdFor trong db.ts)
   soHopDong: string;
   hoTen: string;
   soDienThoai: string;
   tenCongTy: string;
-  storagePath: string; // đường dẫn file PDF trên Cloud Storage
   createdAt: string;
   updatedAt: string;
 }

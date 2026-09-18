@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminAuth, bucket, firestore } from "@/lib/firebase-admin";
+import { adminAuth, firestore } from "@/lib/firebase-admin";
 import { checkSheetAccess } from "@/lib/google";
 import { noStore } from "@/lib/session";
 
@@ -21,19 +21,16 @@ async function probe(check: () => Promise<unknown>): Promise<{ ok: boolean; code
 }
 
 /**
- * GET /api/health → app có đọc được Google Sheet, Firestore, Cloud Storage và quản trị
- * Firebase Auth (cần để tạo/xác minh cookie phiên) không.
+ * GET /api/health → app có đọc được Google Sheet, Firestore và quản trị được Firebase Auth
+ * (cần để tạo/xác minh cookie phiên) không.
  * Không cần đăng nhập vì chỉ trả trạng thái, không trả dữ liệu.
  */
 export async function GET() {
-  const [sheets, db, storage, auth] = await Promise.all([
+  const [sheets, db, auth] = await Promise.all([
     probe(checkSheetAccess),
     probe(() => firestore().collection("contracts").limit(1).get()),
-    probe(() => bucket().getFiles({ prefix: "contracts/", maxResults: 1 })),
     probe(() => adminAuth().listUsers(1)),
   ]);
-  const ok = sheets.ok && db.ok && storage.ok && auth.ok;
-  return noStore(
-    NextResponse.json({ ok, sheets, firestore: db, storage, auth }, { status: ok ? 200 : 503 })
-  );
+  const ok = sheets.ok && db.ok && auth.ok;
+  return noStore(NextResponse.json({ ok, sheets, firestore: db, auth }, { status: ok ? 200 : 503 }));
 }

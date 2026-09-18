@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isConfigured } from "@/lib/config";
-import { listExported } from "@/lib/db";
+import { listExportedSoHopDong } from "@/lib/db";
 import { loadContractRows } from "@/lib/google";
 import { noStore, requireUser } from "@/lib/session";
 
 // Route này phải luôn đọc Google Sheet mới nhất, không được Next.js cache.
 export const dynamic = "force-dynamic";
 
-// GET: đọc 2 tab, ghép + validate, trả về danh sách ContractRow
-// kèm các hợp đồng đã xuất (để hiện nút "Tải PDF"). Đây là bước "đồng bộ khi mở app".
+// GET: đọc 2 tab, ghép + validate, trả về danh sách ContractRow kèm số hợp đồng đã xuất
+// (để biết dòng nào xuất lại sẽ ghi đè). Đây là bước "đồng bộ khi mở app".
 export async function GET(req: NextRequest) {
   const user = await requireUser(req);
   if (user instanceof NextResponse) return user;
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     );
   }
   try {
-    const [rows, exported] = await Promise.all([loadContractRows(), listExported()]);
+    const [rows, exported] = await Promise.all([loadContractRows(), listExportedSoHopDong()]);
     return noStore(NextResponse.json({ rows, exported }));
   } catch (e) {
     const message = e instanceof Error ? e.message : "Lỗi không xác định khi đọc Sheet.";

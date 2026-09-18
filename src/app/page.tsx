@@ -45,7 +45,8 @@ function downloadBlob(blob: Blob, fileName: string) {
 
 export default function HomePage() {
   const [rows, setRows] = useState<Row[]>([]);
-  const [exportedMap, setExportedMap] = useState<Record<string, string>>({}); // soHopDong -> contractId
+  // Số hợp đồng đã xuất trước đó — xuất lại sẽ ghi đè bản ghi cũ
+  const [exportedSoHopDong, setExportedSoHopDong] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exportingId, setExportingId] = useState<string | null>(null);
@@ -69,10 +70,7 @@ export default function HomePage() {
         setRows([]);
       } else {
         setRows(data.rows || []);
-        // Lập map các hợp đồng đã xuất để hiện nút "Tải PDF"
-        const map: Record<string, string> = {};
-        for (const c of data.exported || []) map[c.soHopDong] = c.id;
-        setExportedMap(map);
+        setExportedSoHopDong(new Set<string>(data.exported || []));
       }
     } catch {
       setError("Lỗi kết nối tới máy chủ.");
@@ -97,7 +95,7 @@ export default function HomePage() {
         await sync();
       } else if (res.status === 409) {
         const data = await res.json();
-        if (window.confirm(data.message || "Bản cũ sẽ bị thay thế. Tiếp tục?")) {
+        if (window.confirm(data.message || "Bản ghi cũ sẽ bị thay thế. Tiếp tục?")) {
           setExportingId(null);
           await exportPdf(row, true);
           return;
@@ -156,10 +154,10 @@ export default function HomePage() {
       alert("Không có nhân viên nào đủ điều kiện xuất trong danh sách hiện tại.");
       return;
     }
-    const overwriteCount = exportable.filter((r) => exportedMap[r.employee.soHopDong]).length;
+    const overwriteCount = exportable.filter((r) => exportedSoHopDong.has(r.employee.soHopDong)).length;
     let confirmMsg = `Xuất hợp đồng cho ${exportable.length} nhân viên (bỏ qua ${errCount} dòng lỗi).`;
     if (overwriteCount > 0) {
-      confirmMsg += `\n\nTrong đó ${overwriteCount} hợp đồng đã tồn tại — bản cũ sẽ bị thay thế.`;
+      confirmMsg += `\n\nTrong đó ${overwriteCount} hợp đồng đã xuất trước đó — bản ghi cũ sẽ bị thay thế.`;
     }
     confirmMsg += "\n\nTiếp tục?";
     if (!window.confirm(confirmMsg)) return;
@@ -342,7 +340,7 @@ export default function HomePage() {
             </thead>
             <tbody>
               {filtered.map((r) => {
-                const contractId = exportedMap[r.employee.soHopDong];
+                const daXuat = exportedSoHopDong.has(r.employee.soHopDong);
                 return (
                   <tr key={r.employee.stt}>
                     <td>{r.employee.stt}</td>
@@ -372,31 +370,18 @@ export default function HomePage() {
                       )}
                     </td>
                     <td>
-                      <div className="row-actions">
-                        <button
-                          className="primary"
-                          disabled={!r.canExport || exportingId === r.employee.stt || exportingAll}
-                          onClick={() => exportPdf(r)}
-                          title={
-                            contractId
-                              ? "Tạo lại PDF từ dữ liệu Sheet mới nhất (ghi đè bản cũ)"
-                              : "Tạo PDF từ dữ liệu Sheet"
-                          }
-                        >
-                          {exportingId === r.employee.stt ? "Đang xuất..." : "Xuất PDF"}
-                        </button>
-                        {contractId && (
-                          <a
-                            className="btn"
-                            href={`/api/contracts/${contractId}/pdf`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="Mở bản PDF đã lưu"
-                          >
-                            Tải PDF
-                          </a>
-                        )}
-                      </div>
+                      <button
+                        className="primary"
+                        disabled={!r.canExport || exportingId === r.employee.stt || exportingAll}
+                        onClick={() => exportPdf(r)}
+                        title={
+                          daXuat
+                            ? "Đã xuất trước đó — xuất lại sẽ tạo PDF mới từ dữ liệu Sheet hiện tại"
+                            : "Tạo PDF từ dữ liệu Sheet"
+                        }
+                      >
+                        {exportingId === r.employee.stt ? "Đang xuất..." : "Xuất PDF"}
+                      </button>
                     </td>
                   </tr>
                 );

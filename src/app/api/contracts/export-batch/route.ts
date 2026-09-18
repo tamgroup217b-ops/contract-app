@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isConfigured } from "@/lib/config";
 import { EXPORT_BATCH_SIZE } from "@/lib/export-options";
-import { generateAndStore } from "@/lib/generate";
+import { generateAndRecord } from "@/lib/generate";
 import { loadContractRows } from "@/lib/google";
 import { noStore, requireUser } from "@/lib/session";
 
@@ -15,7 +15,7 @@ interface BatchResult {
 
 /**
  * POST { stts: string[] } — tối đa EXPORT_BATCH_SIZE người mỗi lần.
- * Sinh PDF cho từng người, luôn GHI ĐÈ (đã xác nhận ở nút "Xuất tất cả").
+ * Sinh PDF cho từng người, luôn ghi đè bản ghi cũ (đã xác nhận ở nút "Xuất tất cả").
  * Trả { results } để trình duyệt gộp các lô thành 1 file ZIP.
  */
 export async function POST(req: NextRequest) {
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
         continue;
       }
       try {
-        const { pdf, fileName } = await generateAndStore(row);
+        const { pdf, fileName } = await generateAndRecord(row);
         results.push({ stt, fileName, pdfBase64: pdf.toString("base64") });
       } catch (e) {
         results.push({

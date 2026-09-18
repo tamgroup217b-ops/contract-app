@@ -1,14 +1,15 @@
 # Web App Quản lý Hợp đồng Thử việc
 
-App nội bộ giúp HR sinh, lưu trữ và tra cứu hợp đồng thử việc từ dữ liệu Google Sheet.
+App nội bộ giúp HR sinh và tra cứu hợp đồng thử việc từ dữ liệu Google Sheet.
 
 ## Chức năng
 
 1. **Đồng bộ dữ liệu** từ Google Sheet (2 tab: Nhân viên + Công ty), tự validate và cảnh báo lỗi
 2. **Xuất hợp đồng PDF** — điền tự động thông tin cá nhân + công ty vào khung hợp đồng cứng, chèn ảnh chữ ký/dấu.
-   Xuất từng người, hoặc "Xuất tất cả" (chạy theo lô 5 người, gộp thành 1 file ZIP)
-3. **Lưu trữ** hợp đồng đã xuất; xuất lại thì ghi đè bản cũ (có hỏi xác nhận)
-4. **Tra cứu** hợp đồng theo số điện thoại, tải lại PDF
+   Xuất từng người, hoặc "Xuất tất cả" (chạy theo lô 5 người, gộp thành 1 file ZIP). File tải thẳng về máy người dùng.
+3. **Ghi nhận hợp đồng đã xuất** trong Firestore (số hợp đồng, họ tên, SĐT, công ty, thời điểm xuất).
+   App **không lưu file PDF** — cần bản nào thì xuất lại từ Sheet.
+4. **Tra cứu** theo số điện thoại: xem người đó đã xuất những hợp đồng nào, lần đầu và lần gần nhất khi nào
 5. **Đăng nhập** bằng tài khoản Google
 
 ## Công nghệ
@@ -16,7 +17,6 @@ App nội bộ giúp HR sinh, lưu trữ và tra cứu hợp đồng thử việ
 - **Next.js 15** (App Router) chạy trên **Firebase App Hosting** (region `asia-southeast1`)
 - **Firebase Authentication** (Google) — server đổi ID token thành cookie phiên `__session`; mọi API đều kiểm tra
 - **Cloud Firestore** — thông tin hợp đồng đã xuất (ID tài liệu = băm SHA-256 của số hợp đồng)
-- **Cloud Storage for Firebase** — file PDF (`contracts/<id>.pdf`)
 - **googleapis** — đọc Google Sheet + tải ảnh chữ ký trên Drive
 - **Puppeteer** + **@sparticuz/chromium** — render HTML → PDF; font Tinos nhúng sẵn nên PDF giống nhau trên mọi máy
 
@@ -31,11 +31,13 @@ App Hosting tự build và deploy mỗi khi push lên nhánh `main` của GitHub
 - Project `hop-dong-app-33aec` đã bật Google Sheets API và Google Drive API
 - Firebase Authentication đã bật nhà cung cấp Google; tên miền của app có trong Authorized domains
 
-Rules Firestore/Storage (chặn toàn bộ truy cập trực tiếp từ trình duyệt — app chỉ truy cập qua server):
+Rules chặn toàn bộ truy cập trực tiếp từ trình duyệt (app chỉ truy cập qua server):
 
 ```bash
 firebase deploy --only firestore:rules,storage
 ```
+
+`storage.rules` vẫn được giữ: app không còn dùng Cloud Storage, nhưng bucket cũ còn các file PDF xuất trước đây và cần được chặn.
 
 Kiểm tra kết nối sau khi deploy: mở `/api/health` (chỉ trả trạng thái true/false, không trả dữ liệu).
 
@@ -44,23 +46,13 @@ Kiểm tra kết nối sau khi deploy: mở `/api/health` (chỉ trả trạng t
 1. `npm install`
 2. Chạy emulator (cần Java 21):
    ```bash
-   firebase emulators:start --only auth,firestore,storage --project demo-contract-app
+   firebase emulators:start --only auth,firestore --project demo-contract-app
    ```
    Nếu đường dẫn thư mục dự án có dấu tiếng Việt, Firestore Emulator (Java) sẽ không đọc được file rules —
-   chép `firebase.json`, `firestore.rules`, `storage.rules` ra thư mục không dấu rồi chạy lệnh ở đó.
+   chép `firebase.json` và `firestore.rules` ra thư mục không dấu rồi chạy lệnh ở đó.
 3. Tạo `.env.local` theo `.env.example`: bật các biến `*_EMULATOR_HOST`, đặt `NEXT_PUBLIC_FIREBASE_PROJECT_ID=demo-contract-app`,
    và `SERVICE_ACCOUNT_JSON` là key của tài khoản dịch vụ có quyền xem Sheet
 4. `npm run dev` → http://localhost:3000
-
-## Chuyển dữ liệu từ bản cũ (SQLite + thư mục PDF)
-
-```bash
-node scripts/migrate-sqlite-to-firebase.mjs --data "<thư mục data của bản cũ>" --dry-run   # kiểm tra, không ghi
-node scripts/migrate-sqlite-to-firebase.mjs --data "<thư mục data của bản cũ>"             # ghi lên Firebase
-```
-
-Cần `GOOGLE_APPLICATION_CREDENTIALS` trỏ tới key tài khoản dịch vụ của project Firebase (xóa key sau khi chuyển xong).
-Chạy lại nhiều lần được: hợp đồng đã được xuất lại trên bản mới sẽ không bị ghi đè bởi dữ liệu cũ.
 
 ## Cấu trúc thư mục
 
@@ -76,8 +68,7 @@ src/
         export/               # Xuất 1 hợp đồng
         export-batch/         # Xuất theo lô (tối đa 5 người/request)
         search/               # Tra cứu theo SĐT
-        [id]/pdf/             # Tải PDF đã lưu
-      health/                 # Kiểm tra kết nối Sheet / Firestore / Storage
+      health/                 # Kiểm tra kết nối Sheet / Firestore / Auth
   components/AppShell.tsx     # Header + màn hình đăng nhập
   lib/
     google.ts                 # Đọc Sheet + ảnh Drive
@@ -86,16 +77,14 @@ src/
     fonts.generated.ts        # Font Tinos nhúng (sinh bởi scripts/gen-fonts.mjs)
     pdf.ts, tar.ts            # HTML → PDF (Chrome cài sẵn, hoặc @sparticuz/chromium trên Firebase)
     db.ts                     # Firestore
-    storage.ts                # Cloud Storage
     session.ts                # Cookie phiên, kiểm tra đăng nhập
     firebase-admin.ts         # Firebase Admin SDK (server)
     firebase-client.ts        # Đăng nhập Google (trình duyệt)
 scripts/
-  migrate-sqlite-to-firebase.mjs
   gen-fonts.mjs
 ```
 
 ## Dữ liệu nhạy cảm
 
 - `data/`, `.env*` và các file key JSON đã nằm trong `.gitignore` — không bao giờ commit.
-- Google Sheet nguồn chứa CCCD và địa chỉ nhân viên: nên để quyền truy cập chung là **Hạn chế**.
+- Google Sheet nguồn chứa CCCD và địa chỉ nhân viên.

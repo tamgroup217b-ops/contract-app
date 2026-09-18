@@ -46,8 +46,3 @@ env:
     availability:
       - BUILD
       - RUNTIME
-  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-    value: hop-dong-app-33aec.firebasestorage.app
-    availability:
-      - BUILD
-      - RUNTIME

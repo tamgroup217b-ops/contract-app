@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isConfigured } from "@/lib/config";
 import { findBySoHopDong } from "@/lib/db";
-import { generateAndStore } from "@/lib/generate";
+import { generateAndRecord } from "@/lib/generate";
 import { loadContractRows } from "@/lib/google";
 import { noStore, requireUser } from "@/lib/session";
 
 /**
  * POST { stt, confirmOverwrite? }
- * Sinh PDF cho một nhân viên theo STT, lưu file + thông tin, trả về PDF.
- * Nếu số hợp đồng đã tồn tại và chưa xác nhận ghi đè → trả 409 để trình duyệt hỏi.
+ * Sinh PDF cho một nhân viên theo STT, ghi nhận vào Firestore, trả PDF về cho trình duyệt tải.
+ * Nếu số hợp đồng đã từng xuất và chưa xác nhận ghi đè → trả 409 để trình duyệt hỏi.
  */
 export async function POST(req: NextRequest) {
   const user = await requireUser(req);
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Kiểm tra ghi đè: nếu số hợp đồng đã tồn tại và chưa xác nhận
+    // Đã từng xuất số hợp đồng này và chưa xác nhận → hỏi lại trước khi ghi đè bản ghi cũ
     const existing = await findBySoHopDong(row.employee.soHopDong);
     if (existing && !confirmOverwrite) {
       const updatedAt = new Date(existing.updatedAt).toLocaleString("vi-VN", {
@@ -55,14 +55,14 @@ export async function POST(req: NextRequest) {
         NextResponse.json(
           {
             needConfirm: true,
-            message: `Hợp đồng số "${row.employee.soHopDong}" đã tồn tại (cập nhật lần cuối ${updatedAt}). Bản cũ sẽ bị thay thế. Bạn có muốn tiếp tục?`,
+            message: `Hợp đồng số "${row.employee.soHopDong}" đã xuất trước đó (lần gần nhất ${updatedAt}). Bản ghi cũ sẽ bị thay thế. Bạn có muốn tiếp tục?`,
           },
           { status: 409 }
         )
       );
     }
 
-    const { pdf, fileName } = await generateAndStore(row);
+    const { pdf, fileName } = await generateAndRecord(row);
 
     return noStore(
       new NextResponse(new Uint8Array(pdf), {

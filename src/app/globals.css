@@ -275,16 +275,6 @@ th {
   color: var(--muted);
 }
 
-/* Link hiển thị như nút (vd. "Tải PDF") */
-a.btn {
-  display: inline-block;
-  white-space: nowrap;
-}
-a.btn:hover {
-  text-decoration: none;
-  border-color: var(--primary);
-}
-
 /* Màn hình đăng nhập */
 .login-card {
   max-width: 420px;
